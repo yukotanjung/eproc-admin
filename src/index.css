@@ -1,0 +1,207 @@
+@import "tailwindcss";
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
+@import "@fontsource/roboto-mono/400.css";
+@import "@fontsource/roboto-mono/500.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* Theme tokens measured from the original (capture.json design + css_variables) */
+@theme {
+  --font-sans: Inter, "Inter Fallback", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Roboto Mono", "Roboto Mono Fallback", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --color-background: #ffffff;
+  --color-foreground: #0a0a0a;
+  --color-card: #ffffff;
+  --color-card-foreground: #0a0a0a;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #0a0a0a;
+  --color-primary: #171717;
+  --color-primary-foreground: #fafafa;
+  --color-secondary: #f5f5f5;
+  --color-secondary-foreground: #171717;
+  --color-muted: #f5f5f5;
+  --color-muted-foreground: #737373;
+  --color-accent: #f5f5f5;
+  --color-accent-foreground: #171717;
+  --color-border: #e5e5e5;
+  --color-input: #e5e5e5;
+  --color-ring: #a1a1a1;
+  --color-destructive: #e7000b;
+  --color-destructive-foreground: #9f0712;
+  --color-success: #00bc7d;
+  --color-success-foreground: #004e3b;
+  --color-warning: #f0b100;
+  --color-warning-foreground: #733e0a;
+  --color-info: #8e51ff;
+  --color-info-foreground: #4d179a;
+  --color-sidebar: #fafafa;
+  --color-sidebar-foreground: #0a0a0a;
+  --color-sidebar-accent: #f5f5f5;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-2xl: 18px;
+  --radius-3xl: 22px;
+  --radius-4xl: 26px;
+  --radius-pop: 19.6px;
+
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-tile: 0 1px 3px 0 rgb(0 0 0 / 0.14);
+  --shadow-main: 0 1px 3px 0 rgba(0, 0, 0, 0.08);
+  --shadow-pop: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1), 0 0 0 1px rgb(0 0 0 / 0.06);
+
+  --animate-ping: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@layer base {
+  html, body, #root { height: 100%; }
+  body {
+    font-family: var(--font-sans);
+    background: var(--color-sidebar);
+    color: var(--color-foreground);
+    margin: 0;
+    overflow: hidden;
+  }
+  *, ::before, ::after { border-color: var(--color-border); }
+  button { cursor: pointer; }
+  button:disabled { cursor: default; }
+}
+
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.thin-scrollbar { scrollbar-width: thin; scrollbar-color: #d4d4d4 transparent; }
+
+/* frame: muted outer shell with white panels that overlap its border */
+.frame { position: relative; display: flex; flex-direction: column; background: rgb(245 245 245 / 0.5); border: 1px solid var(--color-border); border-radius: var(--radius-xl); }
+.frame > .panel { margin-left: -1px; margin-right: -1px; }
+.frame > .panel:last-child { margin-bottom: -1px; }
+.frame > .panel:first-child { margin-top: -1px; }
+.panel { position: relative; background: var(--color-card); border: 1px solid var(--color-border); border-radius: var(--radius-xl); box-shadow: var(--shadow-xs); overflow: hidden; }
+.frame-head { display: flex; padding: 6px 12px; }
+
+/* motion: one set of soft easing curves shared by every pop-up, panel, page and bar */
+:root {
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-soft: cubic-bezier(0.4, 0, 1, 1);
+  --ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+}
+@keyframes pop-in { from { opacity: 0; transform: scale(0.96) translateY(-4px); filter: blur(2px); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes pop-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(0.97) translateY(-2px); } }
+.pop-in { animation: pop-in 220ms var(--ease-out-soft); will-change: transform, opacity; }
+.pop-out { animation: pop-out 150ms var(--ease-in-soft) forwards; }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
+.fade-in { animation: fade-in 240ms var(--ease-standard); }
+.fade-out { animation: fade-out 200ms var(--ease-standard) forwards; }
+@keyframes dialog-in { from { opacity: 0; transform: translateY(12px) scale(0.97); } to { opacity: 1; transform: none; } }
+@keyframes dialog-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(6px) scale(0.98); } }
+.dialog-in { animation: dialog-in 300ms var(--ease-out-soft); will-change: transform, opacity; }
+.dialog-out { animation: dialog-out 180ms var(--ease-in-soft) forwards; }
+@keyframes sheet-in { from { transform: translate3d(-100%, 0, 0); } to { transform: translate3d(0, 0, 0); } }
+@keyframes sheet-out { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(-100%, 0, 0); } }
+.sheet-in { animation: sheet-in 380ms var(--ease-spring); will-change: transform; }
+.sheet-out { animation: sheet-out 260ms var(--ease-standard) forwards; }
+@keyframes sheet-right-in { from { transform: translate3d(calc(100% + 16px), 0, 0); } to { transform: translate3d(0, 0, 0); } }
+@keyframes sheet-right-out { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(calc(100% + 16px), 0, 0); } }
+.sheet-right-in { animation: sheet-right-in 420ms var(--ease-spring); will-change: transform; }
+.sheet-right-out { animation: sheet-right-out 260ms var(--ease-standard) forwards; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(16px) scale(0.97); } to { opacity: 1; transform: none; } }
+@keyframes toast-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(24px) scale(0.98); } }
+.toast-in { animation: toast-in 380ms var(--ease-out-soft); }
+.toast-out { animation: toast-out 280ms var(--ease-in-soft) forwards; }
+@keyframes grow-in { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.grow-in { animation: grow-in 900ms var(--ease-out-soft); }
+@keyframes ring-in { from { stroke-dashoffset: var(--ring-c); } }
+@keyframes page-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.page-in { animation: page-in 360ms var(--ease-out-soft); }
+@keyframes tab-line { from { transform: scaleX(0.3); opacity: 0.3; } to { transform: scaleX(1); opacity: 1; } }
+.tab-line::after { animation: tab-line 280ms var(--ease-out-soft); }
+.collapse-rows {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
+  transition: grid-template-rows 360ms var(--ease-out-soft), opacity 280ms ease;
+}
+.collapse-rows > * {
+  overflow: hidden;
+  min-height: 0;
+}
+.collapse-rows[data-state='open'] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  pointer-events: auto;
+}
+@keyframes rise-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.rise-in { animation: rise-in 420ms var(--ease-out-soft) both; }
+/* live sparkline: shift left by one reading over each tick */
+@keyframes spark-scroll { from { transform: translateX(0); } to { transform: translateX(var(--spark-step)); } }
+.spark-scroll { animation-name: spark-scroll; animation-timing-function: linear; animation-fill-mode: forwards; }
+/* system status icon: the pulse line draws itself like a heart monitor */
+.heartbeat path, .heartbeat polyline { stroke-dasharray: 64; animation: heartbeat-draw 2.8s var(--ease-standard) infinite; }
+@keyframes heartbeat-draw { 0% { stroke-dashoffset: 64; } 40% { stroke-dashoffset: 0; } 80% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: -64; } }
+/* gentler default for hover/press colour changes on controls */
+button, a, [role='switch'], [role='checkbox'], input, select, textarea {
+  transition-timing-function: var(--ease-standard);
+}
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after { animation-duration: 1ms !important; transition-duration: 1ms !important; }
+}
+/* loading placeholder: soft grey block with a light sweep moved on the GPU */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: #f1f1f1;
+  isolation: isolate;
+}
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translate3d(-100%, 0, 0);
+  background: linear-gradient(90deg, rgb(255 255 255 / 0) 0%, rgb(255 255 255 / 0.55) 50%, rgb(255 255 255 / 0) 100%);
+  animation: skeleton-sweep 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  will-change: transform;
+}
+@keyframes skeleton-sweep { to { transform: translate3d(100%, 0, 0); } }
+@keyframes skeleton-out { from { opacity: 1; } to { opacity: 0; } }
+.skeleton-out { animation: skeleton-out 260ms ease-out forwards; }
+@keyframes content-in { from { opacity: 0; } to { opacity: 1; } }
+.content-in { animation: content-in 320ms ease-out; }
+@keyframes fetch-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+.fetch-bar { animation: fetch-slide 1.1s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+
+/* sidebar folding down to its icons */
+.rail { transition: width 240ms cubic-bezier(0.4, 0, 0.2, 1); will-change: width; }
+.rail-toggle { transition: left 240ms cubic-bezier(0.4, 0, 0.2, 1); }
+.rail-fade { white-space: nowrap; transition: opacity 160ms ease; }
+.rail-pad { transition: padding 240ms cubic-bezier(0.4, 0, 0.2, 1); }
+.rail-label { transition: margin 240ms cubic-bezier(0.4, 0, 0.2, 1), opacity 160ms ease; }
+.rail-user { transition: padding 240ms cubic-bezier(0.4, 0, 0.2, 1), margin 240ms cubic-bezier(0.4, 0, 0.2, 1); }
+.rail-dot { opacity: 0; transition: opacity 160ms ease; }
+[data-collapsed='true'] .rail-fade { opacity: 0; pointer-events: none; }
+[data-collapsed='true'] .rail-pad { padding-left: 0; padding-right: 0; }
+[data-collapsed='true'] .rail-label { margin-top: -2rem; opacity: 0; pointer-events: none; }
+[data-collapsed='true'] .rail-gone { display: none; }
+[data-collapsed='true'] .rail-user { margin-left: 0; padding-left: 6px; padding-right: 6px; }
+[data-collapsed='true'] .rail-dot { opacity: 1; }
+
+/* faint square grid behind the sign-in screens */
+.auth-grid {
+  background-image:
+    linear-gradient(to right, rgb(0 0 0 / 0.025) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(0 0 0 / 0.025) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+.recharts-surface, .recharts-wrapper *:focus { outline: none; }
