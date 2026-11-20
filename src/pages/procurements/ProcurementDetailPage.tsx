@@ -27,14 +27,17 @@ import {
   Checkbox,
   ConfirmDialog,
   DataState,
+  DatePicker,
   FieldLabel,
   FieldSelect,
   FilterGroup,
   FormDialog,
   Frame,
   FrameHeader,
+  Pager,
   Panel,
   RefreshButton,
+  SearchInput,
   StatTile,
   StatusBadge,
   Switch,
@@ -42,6 +45,7 @@ import {
   useToast,
 } from '~/components/ui'
 import {
+  type MasterItem,
   type ProcurementChecklistFileItem,
   type ProcurementChecklistFilePayload,
   type ProcurementDocumentItem,
@@ -57,7 +61,9 @@ import {
   formatCurrency,
   formatDate,
   formatFileSize,
+  formatGroupedNumber,
   formatNumber,
+  parseDigits,
   toInputDate,
   toInputDateTime,
 } from '~/lib/utils/format'
@@ -82,15 +88,80 @@ export function ProcurementDetailPage() {
   const checklistQuery = useQuery(procurementQueries.checklistFiles(procurementId))
 
   const allSubFieldsQuery = useQuery(masterQueries.list('job-sub-field', { all: true }))
+  const jobFieldsQuery = useQuery(masterQueries.list('job-field', { all: true }))
   const unitsQuery = useQuery(masterQueries.list('unit', { all: true }))
 
   const procurement = detailQuery.data?.result
-  const assignedSubFields = subFieldsQuery.data?.result ?? []
-  const allSubFields = allSubFieldsQuery.data?.result ?? []
+  const assignedSubFields = useMemo(
+    () => subFieldsQuery.data?.result ?? [],
+    [subFieldsQuery.data?.result],
+  )
+  const allSubFields = useMemo(
+    () => allSubFieldsQuery.data?.result ?? [],
+    [allSubFieldsQuery.data?.result],
+  )
+  const jobFields = jobFieldsQuery.data?.result ?? []
+
+  const [tableJobFieldId, setTableJobFieldId] = useState('')
+  const [subFieldPage, setSubFieldPage] = useState(1)
+  const [subFieldPageSize, setSubFieldPageSize] = useState(10)
+  const [checkedSubFieldIds, setCheckedSubFieldIds] = useState<number[]>([])
+  const [deletingSubField, setDeletingSubField] = useState<MasterItem | null>(null)
+  const [confirmDeleteMultipleOpen, setConfirmDeleteMultipleOpen] = useState(false)
+  const [deletingMultipleSubFields, setDeletingMultipleSubFields] = useState(false)
+
+  const filteredAssignedSubFields = useMemo(() => {
+    return assignedSubFields.filter((sf) => {
+      if (
+        tableJobFieldId &&
+        Number(sf.jobFieldId ?? sf.jobField?.id ?? 0) !== Number(tableJobFieldId)
+      ) {
+        return false
+      }
+      return true
+    })
+  }, [assignedSubFields, tableJobFieldId])
+
+  const totalSubFieldPages = Math.max(
+    1,
+    Math.ceil(filteredAssignedSubFields.length / subFieldPageSize),
+  )
+  const safeSubFieldPage = Math.min(subFieldPage, totalSubFieldPages)
+  const paginatedAssignedSubFields = useMemo(() => {
+    const start = (safeSubFieldPage - 1) * subFieldPageSize
+    return filteredAssignedSubFields.slice(start, start + subFieldPageSize)
+  }, [filteredAssignedSubFields, safeSubFieldPage, subFieldPageSize])
+
+  const [subFieldModalOpen, setSubFieldModalOpen] = useState(false)
+  const [modalJobFieldId, setModalJobFieldId] = useState('')
+  const [modalSubFieldSearch, setModalSubFieldSearch] = useState('')
+
+  const filteredModalSubFields = useMemo(() => {
+    const needle = modalSubFieldSearch.trim().toLowerCase()
+    return allSubFields.filter((sf) => {
+      if (
+        modalJobFieldId &&
+        Number(sf.jobFieldId ?? sf.jobField?.id ?? 0) !== Number(modalJobFieldId)
+      ) {
+        return false
+      }
+      if (needle && !sf.name.toLowerCase().includes(needle)) {
+        return false
+      }
+      return true
+    })
+  }, [allSubFields, modalJobFieldId, modalSubFieldSearch])
   const schedules = useMemo(() => schedulesQuery.data?.result ?? [], [schedulesQuery.data?.result])
   const hpsResult = hpsQuery.data?.result
   const hpsItems = hpsResult?.items ?? []
   const hpsSummary = hpsResult?.summary
+  const [hpsSearch, setHpsSearch] = useState('')
+  const trimmedHpsSearch = hpsSearch.trim()
+  const filteredHpsItems = useMemo(() => {
+    if (!trimmedHpsSearch) return hpsItems
+    const needle = trimmedHpsSearch.toLowerCase()
+    return hpsItems.filter((item) => item.name.toLowerCase().includes(needle))
+  }, [hpsItems, trimmedHpsSearch])
   const documents = documentsQuery.data?.result ?? []
   const checklistFiles = checklistQuery.data?.result ?? []
   const units = unitsQuery.data?.result ?? []
@@ -100,7 +171,17 @@ export function ProcurementDetailPage() {
 
   useEffect(() => {
     setSelectedSubFieldIds(assignedSubFields.map((s) => s.id))
+    setCheckedSubFieldIds((prev) =>
+      prev.filter((id) => assignedSubFields.some((s) => s.id === id)),
+    )
   }, [assignedSubFields])
+
+  const openSubFieldModal = () => {
+    setSelectedSubFieldIds(assignedSubFields.map((s) => s.id))
+    setModalJobFieldId('')
+    setModalSubFieldSearch('')
+    setSubFieldModalOpen(true)
+  }
 
   const handleSyncSubFields = async () => {
     setSyncingSubFields(true)
@@ -111,6 +192,7 @@ export function ProcurementDetailPage() {
         description: `${selectedSubFieldIds.length} sub-bidang terhubung ke paket ini.`,
         tone: 'success',
       })
+      setSubFieldModalOpen(false)
       queryClient.invalidateQueries({
         queryKey: ['procurements', procurementId, 'job-sub-fields'],
       })
@@ -125,20 +207,72 @@ export function ProcurementDetailPage() {
     }
   }
 
-  const handleDetachSubField = async (subFieldId: number) => {
+  const handleDeleteSubField = async () => {
+    if (!deletingSubField) return
     try {
-      await procurementApi.detachJobSubField(procurementId, subFieldId)
-      toast.push({ title: 'Sub-bidang dilepas dari paket', tone: 'info' })
+      await procurementApi.detachJobSubField(procurementId, deletingSubField.id)
+      toast.push({ title: 'Sub-bidang dihapus dari paket', tone: 'info' })
+      setCheckedSubFieldIds((prev) => prev.filter((id) => id !== deletingSubField.id))
+      setDeletingSubField(null)
       queryClient.invalidateQueries({
         queryKey: ['procurements', procurementId, 'job-sub-fields'],
       })
     } catch (err) {
       toast.push({
-        title: 'Gagal melepas sub-bidang',
+        title: 'Gagal menghapus sub-bidang',
         description: getApiErrorMessage(err),
         tone: 'error',
       })
     }
+  }
+
+  const handleDeleteSelectedSubFields = async () => {
+    if (checkedSubFieldIds.length === 0) return
+    setDeletingMultipleSubFields(true)
+    try {
+      const remainingIds = assignedSubFields
+        .map((s) => s.id)
+        .filter((id) => !checkedSubFieldIds.includes(id))
+      await procurementApi.syncJobSubFields(procurementId, remainingIds)
+      toast.push({
+        title: `${checkedSubFieldIds.length} sub-bidang dihapus dari paket`,
+        tone: 'info',
+      })
+      setCheckedSubFieldIds([])
+      setConfirmDeleteMultipleOpen(false)
+      queryClient.invalidateQueries({
+        queryKey: ['procurements', procurementId, 'job-sub-fields'],
+      })
+    } catch (err) {
+      toast.push({
+        title: 'Gagal menghapus sub-bidang terpilih',
+        description: getApiErrorMessage(err),
+        tone: 'error',
+      })
+    } finally {
+      setDeletingMultipleSubFields(false)
+    }
+  }
+
+  const allPageChecked =
+    paginatedAssignedSubFields.length > 0 &&
+    paginatedAssignedSubFields.every((sf) => checkedSubFieldIds.includes(sf.id))
+  const somePageChecked =
+    !allPageChecked && paginatedAssignedSubFields.some((sf) => checkedSubFieldIds.includes(sf.id))
+
+  const toggleSelectAllPage = () => {
+    const pageIds = paginatedAssignedSubFields.map((sf) => sf.id)
+    if (allPageChecked) {
+      setCheckedSubFieldIds((prev) => prev.filter((id) => !pageIds.includes(id)))
+    } else {
+      setCheckedSubFieldIds((prev) => Array.from(new Set([...prev, ...pageIds])))
+    }
+  }
+
+  const toggleCheckSubField = (subFieldId: number) => {
+    setCheckedSubFieldIds((prev) =>
+      prev.includes(subFieldId) ? prev.filter((id) => id !== subFieldId) : [...prev, subFieldId],
+    )
   }
 
   const [editableSchedules, setEditableSchedules] = useState<ProcurementScheduleItem[]>([])
@@ -428,7 +562,7 @@ export function ProcurementDetailPage() {
   }
 
   const fileBearingSchedules = useMemo(
-    () => schedules.filter((s) => s.requiresFile),
+    () => schedules.filter((s) => Boolean(s.requiresFile)),
     [schedules],
   )
   const [checklistModalOpen, setChecklistModalOpen] = useState(false)
@@ -450,7 +584,7 @@ export function ProcurementDetailPage() {
   const openCreateChecklist = () => {
     checklistFormValidation.clearErrors()
     setEditingChecklist(null)
-    const defaultSchedule = fileBearingSchedules[0] ?? schedules[0]
+    const defaultSchedule = fileBearingSchedules[0]
     setChecklistForm({
       procurementScheduleId: defaultSchedule?.id ?? 0,
       name: '',
@@ -597,8 +731,8 @@ export function ProcurementDetailPage() {
       />
 
       {activeTab === 'overview' && (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <Frame className="lg:col-span-2">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <Frame>
             <FrameHeader
               icon={FileText}
               title="Informasi Umum Paket Pengadaan"
@@ -706,62 +840,142 @@ export function ProcurementDetailPage() {
               title="Sub-Bidang Pekerjaan"
               count={assignedSubFields.length}
               right={
-                <Button
-                  variant="primary"
-                  size="xs"
-                  loading={syncingSubFields}
-                  onClick={handleSyncSubFields}
-                >
-                  <Save className="size-3" />
-                  Sinkronkan
-                </Button>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {checkedSubFieldIds.length > 0 && (
+                    <Button
+                      variant="destructive"
+                      size="xs"
+                      loading={deletingMultipleSubFields}
+                      onClick={() => setConfirmDeleteMultipleOpen(true)}
+                    >
+                      <Trash2 className="size-3.5" />
+                      Hapus ({checkedSubFieldIds.length})
+                    </Button>
+                  )}
+                  <Button variant="primary" size="xs" onClick={openSubFieldModal}>
+                    <Plus className="size-3.5" />
+                    Tambah Sub-Bidang
+                  </Button>
+                </div>
               }
             />
-            <Panel className="p-3 space-y-3">
-              <div className="text-[11px] text-muted-foreground">
-                Pilih sub-bidang pekerjaan yang disyaratkan pada paket ini lalu klik{' '}
-                <strong className="text-foreground">Sinkronkan</strong>.
+            <Panel className="overflow-hidden">
+              <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/20 px-3 py-2">
+                <FieldSelect
+                  value={tableJobFieldId}
+                  onChange={(v) => {
+                    setTableJobFieldId(v)
+                    setSubFieldPage(1)
+                  }}
+                  placeholder="Semua Bidang Pekerjaan"
+                  options={jobFields.map((jf) => ({ value: jf.id, label: jf.name }))}
+                  aria-label="Filter berdasarkan Bidang Pekerjaan"
+                  className="w-48"
+                />
               </div>
-              <div className="max-h-72 overflow-y-auto divide-y divide-border rounded-lg border border-border">
-                {allSubFields.length === 0 ? (
-                  <div className="p-4 text-center text-xs text-muted-foreground">
-                    Belum ada master sub-bidang pekerjaan.
-                  </div>
-                ) : (
-                  allSubFields.map((sf) => {
-                    const checked = selectedSubFieldIds.includes(sf.id)
-                    const isAssigned = assignedSubFields.some((a) => a.id === sf.id)
-                    return (
-                      <div
-                        key={sf.id}
-                        className="flex items-center justify-between gap-2 px-2.5 py-2 text-xs hover:bg-accent/50"
-                      >
-                        <label
-                          className="flex items-center gap-2 cursor-pointer min-w-0 flex-1"
-                          onClick={() =>
-                            setSelectedSubFieldIds((prev) =>
-                              checked ? prev.filter((x) => x !== sf.id) : [...prev, sf.id],
-                            )
-                          }
-                        >
-                          <Checkbox checked={checked} />
-                          <span className="truncate font-medium text-foreground">{sf.name}</span>
-                        </label>
-                        {isAssigned && (
-                          <button
-                            type="button"
-                            onClick={() => handleDetachSubField(sf.id)}
-                            title="Lepas sub-bidang"
-                            className="text-rose-600 hover:underline text-[11px] cursor-pointer"
+              <DataState
+                loading={subFieldsQuery.isLoading}
+                fetching={subFieldsQuery.isFetching}
+                error={subFieldsQuery.isError ? getApiErrorMessage(subFieldsQuery.error) : null}
+                empty={filteredAssignedSubFields.length === 0}
+                emptyTitle={
+                  tableJobFieldId
+                    ? 'Sub-bidang tidak ditemukan'
+                    : 'Belum ada sub-bidang pekerjaan'
+                }
+                emptyDescription={
+                  tableJobFieldId
+                    ? 'Tidak ada sub-bidang tersimpan yang cocok dengan filter.'
+                    : 'Tambahkan sub-bidang pekerjaan yang disyaratkan pada paket ini.'
+                }
+                emptyAction={
+                  tableJobFieldId ? (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        setTableJobFieldId('')
+                        setSubFieldPage(1)
+                      }}
+                    >
+                      Reset Filter
+                    </Button>
+                  ) : (
+                    <Button variant="primary" size="sm" onClick={openSubFieldModal}>
+                      <Plus className="size-3.5" />
+                      Tambah Sub-Bidang
+                    </Button>
+                  )
+                }
+                onRetry={() => subFieldsQuery.refetch()}
+              >
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-border bg-muted/40 text-[11px] text-muted-foreground">
+                        <th className="w-9 px-3 py-2">
+                          <Checkbox
+                            checked={allPageChecked}
+                            indeterminate={somePageChecked}
+                            onChange={toggleSelectAllPage}
+                            ariaLabel="Pilih semua sub-bidang di halaman ini"
+                          />
+                        </th>
+                        <th className="px-3 py-2 font-medium">Sub-Bidang Pekerjaan</th>
+                        <th className="px-3 py-2 font-medium">Bidang</th>
+                        <th className="px-3 py-2 font-medium text-right">Aksi</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {paginatedAssignedSubFields.map((sf) => {
+                        const checked = checkedSubFieldIds.includes(sf.id)
+                        return (
+                          <tr
+                            key={sf.id}
+                            className={`row-hover ${checked ? 'bg-accent/40' : ''}`}
                           >
-                            Lepas
-                          </button>
-                        )}
-                      </div>
-                    )
-                  })
-                )}
-              </div>
+                            <td className="px-3 py-2.5">
+                              <Checkbox
+                                checked={checked}
+                                onChange={() => toggleCheckSubField(sf.id)}
+                                ariaLabel={`Pilih ${sf.name}`}
+                              />
+                            </td>
+                            <td title={sf.name} className="px-3 py-2.5 font-medium text-foreground">
+                              {sf.name}
+                            </td>
+                            <td className="px-3 py-2.5 text-muted-foreground">
+                              {sf.jobField?.name ?? '-'}
+                            </td>
+                            <td className="px-3 py-2.5 text-right">
+                              <Button
+                                variant="ghost"
+                                size="iconSm"
+                                onClick={() => setDeletingSubField(sf)}
+                                aria-label={`Hapus ${sf.name}`}
+                              >
+                                <Trash2 className="size-3.5 text-rose-600" />
+                              </Button>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="border-t border-border">
+                  <Pager
+                    page={safeSubFieldPage}
+                    perPage={subFieldPageSize}
+                    total={filteredAssignedSubFields.length}
+                    onPage={setSubFieldPage}
+                    onPerPage={(next) => {
+                      setSubFieldPageSize(next)
+                      setSubFieldPage(1)
+                    }}
+                  />
+                </div>
+              </DataState>
             </Panel>
           </Frame>
         </div>
@@ -868,27 +1082,31 @@ export function ProcurementDetailPage() {
                           </Badge>
                         </td>
                         <td className="px-3 py-2.5">
-                          <input
-                            type="datetime-local"
+                          <DatePicker
+                            mode="datetime"
+                            size="sm"
                             value={toInputDateTime(stage.startAt)}
-                            onChange={(e) => {
+                            onChange={(val) => {
                               const next = [...editableSchedules]
-                              next[idx] = { ...stage, startAt: e.target.value }
+                              next[idx] = { ...stage, startAt: val }
                               setEditableSchedules(next)
                             }}
-                            className="h-7 rounded-md border border-border bg-white px-2 font-mono text-[11px] text-foreground focus:outline-none"
+                            aria-label={`Waktu mulai ${stage.name}`}
+                            className="w-[172px]"
                           />
                         </td>
                         <td className="px-3 py-2.5">
-                          <input
-                            type="datetime-local"
+                          <DatePicker
+                            mode="datetime"
+                            size="sm"
                             value={toInputDateTime(stage.endAt)}
-                            onChange={(e) => {
+                            onChange={(val) => {
                               const next = [...editableSchedules]
-                              next[idx] = { ...stage, endAt: e.target.value }
+                              next[idx] = { ...stage, endAt: val }
                               setEditableSchedules(next)
                             }}
-                            className="h-7 rounded-md border border-border bg-white px-2 font-mono text-[11px] text-foreground focus:outline-none"
+                            aria-label={`Waktu selesai ${stage.name}`}
+                            className="w-[172px]"
                           />
                         </td>
                         <td className="px-3 py-2.5">
@@ -949,12 +1167,25 @@ export function ProcurementDetailPage() {
             <FrameHeader
               icon={Wallet}
               title="Rincian Harga Perkiraan Sendiri (HPS)"
-              count={hpsItems.length}
+              count={
+                trimmedHpsSearch
+                  ? `${filteredHpsItems.length} / ${hpsItems.length}`
+                  : hpsItems.length
+              }
               right={
-                <Button variant="primary" size="xs" onClick={openCreateHps}>
-                  <Plus className="size-3.5" />
-                  Tambah Item HPS
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <SearchInput
+                    value={hpsSearch}
+                    onChange={setHpsSearch}
+                    placeholder="Cari uraian barang / jasa..."
+                    aria-label="Cari uraian barang atau jasa"
+                    className="w-56"
+                  />
+                  <Button variant="primary" size="xs" onClick={openCreateHps}>
+                    <Plus className="size-3.5" />
+                    Tambah Item HPS
+                  </Button>
+                </div>
               }
             />
             <Panel className="overflow-hidden">
@@ -962,14 +1193,26 @@ export function ProcurementDetailPage() {
                 loading={hpsQuery.isLoading}
                 fetching={hpsQuery.isFetching}
                 error={hpsQuery.isError ? getApiErrorMessage(hpsQuery.error) : null}
-                empty={hpsItems.length === 0}
-                emptyTitle="Belum ada rincian item HPS"
-                emptyDescription="Tambahkan item barang/jasa beserta kuantitas dan harga satuan untuk menghitung nilai HPS paket ini."
+                empty={filteredHpsItems.length === 0}
+                emptyTitle={
+                  trimmedHpsSearch ? 'Item HPS tidak ditemukan' : 'Belum ada rincian item HPS'
+                }
+                emptyDescription={
+                  trimmedHpsSearch
+                    ? `Tidak ada uraian barang/jasa yang cocok dengan "${trimmedHpsSearch}".`
+                    : 'Tambahkan item barang/jasa beserta kuantitas dan harga satuan untuk menghitung nilai HPS paket ini.'
+                }
                 emptyAction={
-                  <Button variant="primary" size="sm" onClick={openCreateHps}>
-                    <Plus className="size-3.5" />
-                    Tambah Item HPS Pertama
-                  </Button>
+                  trimmedHpsSearch ? (
+                    <Button variant="secondary" size="sm" onClick={() => setHpsSearch('')}>
+                      Reset Pencarian
+                    </Button>
+                  ) : (
+                    <Button variant="primary" size="sm" onClick={openCreateHps}>
+                      <Plus className="size-3.5" />
+                      Tambah Item HPS Pertama
+                    </Button>
+                  )
                 }
                 onRetry={() => hpsQuery.refetch()}
               >
@@ -982,16 +1225,25 @@ export function ProcurementDetailPage() {
                         <th className="px-3 py-2 font-medium text-right">Kuantitas</th>
                         <th className="px-3 py-2 font-medium text-right">Harga Satuan</th>
                         <th className="px-3 py-2 font-medium">Pajak</th>
+                        <th className="px-3 py-2 font-medium text-right">Nilai Pajak</th>
                         <th className="px-3 py-2 font-medium text-right">Total Harga</th>
                         <th className="px-3 py-2 font-medium text-right">Aksi</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
-                      {hpsItems.map((item) => {
+                      {filteredHpsItems.map((item) => {
                         const calcSubtotal =
-                          Number(item.subtotalBeforeTax) ||
+                          item.baseSubtotal ??
+                          item.subtotalBeforeTax ??
                           Number(item.quantity) * Number(item.unitPrice)
-                        const calcTotal = Number(item.totalPrice) || calcSubtotal
+                        const calcTax =
+                          item.taxAmount !== undefined && item.taxAmount !== null
+                            ? Number(item.taxAmount)
+                            : item.useTax
+                              ? Math.round(calcSubtotal * ((item.taxRate ?? 11) / 100) * 100) / 100
+                              : 0
+                        const calcTotal =
+                          item.subtotal ?? item.totalPrice ?? calcSubtotal + calcTax
                         return (
                           <tr key={item.id} className="row-hover">
                             <td className="px-3 py-2.5 font-medium text-foreground">{item.name}</td>
@@ -1016,6 +1268,9 @@ export function ProcurementDetailPage() {
                                   Tanpa Pajak
                                 </Badge>
                               )}
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-mono tabular-nums text-muted-foreground">
+                              {formatCurrency(calcTax)}
                             </td>
                             <td className="px-3 py-2.5 text-right font-mono tabular-nums font-medium text-foreground">
                               {formatCurrency(calcTotal)}
@@ -1298,15 +1553,13 @@ export function ProcurementDetailPage() {
       >
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <FieldLabel label="Tanggal Mulai" required error={genFormValidation.errors.startDate}>
-            <input
-              type="date"
-              aria-invalid={Boolean(genFormValidation.errors.startDate)}
+            <DatePicker
+              error={genFormValidation.errors.startDate}
               value={genStartDate}
-              onChange={(e) => {
-                setGenStartDate(e.target.value)
+              onChange={(val) => {
+                setGenStartDate(val)
                 genFormValidation.clearError('startDate')
               }}
-              className={`${fieldBase} font-mono`}
             />
           </FieldLabel>
           <FieldLabel
@@ -1416,15 +1669,15 @@ export function ProcurementDetailPage() {
           </FieldLabel>
           <FieldLabel label="Harga Satuan (IDR)" required error={hpsFormValidation.errors.unitPrice}>
             <input
-              type="number"
-              min={0}
-              step="any"
+              type="text"
+              inputMode="numeric"
               aria-invalid={Boolean(hpsFormValidation.errors.unitPrice)}
-              value={hpsForm.unitPrice}
+              value={formatGroupedNumber(hpsForm.unitPrice)}
               onChange={(e) => {
-                setHpsForm({ ...hpsForm, unitPrice: Number(e.target.value) })
+                setHpsForm({ ...hpsForm, unitPrice: parseDigits(e.target.value) })
                 hpsFormValidation.clearError('unitPrice')
               }}
+              placeholder="0"
               className={`${fieldBase} font-mono`}
             />
           </FieldLabel>
@@ -1499,6 +1752,7 @@ export function ProcurementDetailPage() {
         open={checklistModalOpen}
         onClose={() => setChecklistModalOpen(false)}
         title={editingChecklist ? 'Ubah Checklist Berkas' : 'Tambah Checklist Berkas'}
+        size="lg"
         loading={savingChecklist}
         onSubmit={handleSaveChecklist}
       >
@@ -1514,13 +1768,15 @@ export function ProcurementDetailPage() {
               setChecklistForm({ ...checklistForm, procurementScheduleId: Number(v) })
               checklistFormValidation.clearError('procurementScheduleId')
             }}
-            placeholder="Pilih Tahapan Jadwal"
-            options={(fileBearingSchedules.length > 0 ? fileBearingSchedules : schedules).map(
-              (s) => ({
-                value: s.id,
-                label: `#${s.sequence} ${s.name}${s.requiresFile ? ' (Wajib Berkas)' : ''}`,
-              }),
-            )}
+            placeholder={
+              fileBearingSchedules.length > 0
+                ? 'Pilih Tahapan Jadwal'
+                : 'Belum ada tahapan Wajib Berkas'
+            }
+            options={fileBearingSchedules.map((s) => ({
+              value: s.id,
+              label: `#${s.sequence} ${s.name}`,
+            }))}
           />
         </FieldLabel>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1641,6 +1897,92 @@ export function ProcurementDetailPage() {
         confirmLabel="Hapus Checklist"
         onConfirm={handleDeleteChecklist}
       />
+
+      <ConfirmDialog
+        open={Boolean(deletingSubField)}
+        onClose={() => setDeletingSubField(null)}
+        title={`Hapus Sub-Bidang "${deletingSubField?.name ?? ''}"?`}
+        description="Sub-bidang pekerjaan akan dilepas dari paket pengadaan ini."
+        confirmLabel="Hapus"
+        onConfirm={handleDeleteSubField}
+      />
+
+      <ConfirmDialog
+        open={confirmDeleteMultipleOpen}
+        onClose={() => setConfirmDeleteMultipleOpen(false)}
+        title={`Hapus ${checkedSubFieldIds.length} Sub-Bidang Terpilih?`}
+        description="Seluruh sub-bidang pekerjaan yang dicentang akan dilepas dari paket pengadaan ini."
+        confirmLabel={`Hapus ${checkedSubFieldIds.length} Item`}
+        loading={deletingMultipleSubFields}
+        onConfirm={handleDeleteSelectedSubFields}
+      />
+
+      <FormDialog
+        open={subFieldModalOpen}
+        onClose={() => setSubFieldModalOpen(false)}
+        title="Pilih Sub-Bidang Pekerjaan"
+        description={`Terpilih ${selectedSubFieldIds.length} sub-bidang untuk disinkronkan ke paket ini.`}
+        submitLabel="Simpan Sub-Bidang"
+        size="xl"
+        loading={syncingSubFields}
+        onSubmit={handleSyncSubFields}
+      >
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <FieldSelect
+            value={modalJobFieldId}
+            onChange={setModalJobFieldId}
+            placeholder="Semua Bidang Pekerjaan"
+            options={jobFields.map((jf) => ({ value: jf.id, label: jf.name }))}
+            aria-label="Filter Bidang Pekerjaan"
+          />
+          <SearchInput
+            value={modalSubFieldSearch}
+            onChange={setModalSubFieldSearch}
+            placeholder="Cari sub-bidang..."
+            aria-label="Cari sub-bidang"
+          />
+        </div>
+
+        <div className="max-h-72 overflow-y-auto divide-y divide-border rounded-lg border border-border">
+          {filteredModalSubFields.length === 0 ? (
+            <div className="p-4 text-center text-xs text-muted-foreground">
+              Tidak ada sub-bidang pekerjaan yang cocok.
+            </div>
+          ) : (
+            filteredModalSubFields.map((sf) => {
+              const checked = selectedSubFieldIds.includes(sf.id)
+              return (
+                <label
+                  key={sf.id}
+                  onClick={() =>
+                    setSelectedSubFieldIds((prev) =>
+                      checked ? prev.filter((x) => x !== sf.id) : [...prev, sf.id],
+                    )
+                  }
+                  className="flex items-center justify-between gap-2 px-3 py-2 text-xs hover:bg-accent/50 cursor-pointer"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Checkbox
+                      checked={checked}
+                      onChange={() =>
+                        setSelectedSubFieldIds((prev) =>
+                          checked ? prev.filter((x) => x !== sf.id) : [...prev, sf.id],
+                        )
+                      }
+                    />
+                    <span title={sf.name} className="truncate font-medium text-foreground">
+                      {sf.name}
+                    </span>
+                  </div>
+                  <span className="shrink-0 text-[11px] text-muted-foreground">
+                    {sf.jobField?.name ?? ''}
+                  </span>
+                </label>
+              )
+            })
+          )}
+        </div>
+      </FormDialog>
     </div>
   )
 }

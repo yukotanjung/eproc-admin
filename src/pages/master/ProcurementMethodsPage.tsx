@@ -17,6 +17,7 @@ import {
   Button,
   ConfirmDialog,
   DataState,
+  DatePicker,
   FieldLabel,
   FieldSelect,
   FormDialog,
@@ -24,6 +25,7 @@ import {
   FrameHeader,
   Panel,
   RefreshButton,
+  SearchInput,
   StatusBadge,
   Switch,
   fieldBase,
@@ -58,7 +60,14 @@ export function ProcurementMethodsPage() {
   const toast = useToast()
   const queryClient = useQueryClient()
 
-  const methodsQuery = useQuery(procurementMethodQueries.list({ all: true }))
+  const [search, setSearch] = useState('')
+  const trimmedSearch = search.trim()
+  const methodsQuery = useQuery(
+    procurementMethodQueries.list({
+      all: true,
+      filter: trimmedSearch ? { name: trimmedSearch } : undefined,
+    }),
+  )
   const methods = methodsQuery.data?.result ?? []
 
   const [selectedId, setSelectedId] = useState<number>(0)
@@ -326,6 +335,15 @@ export function ProcurementMethodsPage() {
             icon={Milestone}
             title="Daftar Metode"
             count={methods.length}
+            right={
+              <SearchInput
+                value={search}
+                onChange={setSearch}
+                placeholder="Cari nama metode..."
+                aria-label="Cari nama metode"
+                className="w-40 sm:w-44"
+              />
+            }
           />
           <Panel className="divide-y divide-border overflow-hidden">
             <DataState
@@ -333,13 +351,23 @@ export function ProcurementMethodsPage() {
               fetching={methodsQuery.isFetching}
               error={methodsQuery.isError ? getApiErrorMessage(methodsQuery.error) : null}
               empty={methods.length === 0}
-              emptyTitle="Belum ada metode pengadaan"
-              emptyDescription="Tambahkan metode seperti Tender Terbuka, Seleksi, atau Penunjukan Langsung."
+              emptyTitle={trimmedSearch ? 'Metode tidak ditemukan' : 'Belum ada metode pengadaan'}
+              emptyDescription={
+                trimmedSearch
+                  ? `Tidak ada metode dengan nama "${trimmedSearch}".`
+                  : 'Tambahkan metode seperti Tender Terbuka, Seleksi, atau Penunjukan Langsung.'
+              }
               emptyAction={
-                <Button variant="primary" size="sm" onClick={openCreateMethod}>
-                  <Plus className="size-3.5" />
-                  Buat Metode
-                </Button>
+                trimmedSearch ? (
+                  <Button variant="secondary" size="sm" onClick={() => setSearch('')}>
+                    Reset Pencarian
+                  </Button>
+                ) : (
+                  <Button variant="primary" size="sm" onClick={openCreateMethod}>
+                    <Plus className="size-3.5" />
+                    Buat Metode
+                  </Button>
+                )
               }
               onRetry={() => methodsQuery.refetch()}
               rows={4}
@@ -353,17 +381,16 @@ export function ProcurementMethodsPage() {
                       setSelectedId(m.id)
                       setPreviewItems([])
                     }}
-                    className={`flex items-start justify-between gap-2 p-3 text-xs transition cursor-pointer ${
-                      active ? 'bg-accent/80' : 'hover:bg-accent/40'
-                    }`}
+                    className={`flex items-start justify-between gap-2 p-3 text-xs transition cursor-pointer ${active ? 'bg-accent/80' : 'hover:bg-accent/40'
+                      }`}
                   >
                     <div className="min-w-0 space-y-1">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-semibold text-foreground truncate">{m.name}</span>
+                        <span className="font-semibold text-foreground wrap-break-word">{m.name}</span>
                         <StatusBadge status={m.isActive !== false} />
                       </div>
                       <p className="text-[11px] text-muted-foreground line-clamp-2">
-                        {m.description || 'Tanpa deskripsi tambahan'}
+                        {m.description || '-'}
                       </p>
                     </div>
                     <div
@@ -543,11 +570,12 @@ export function ProcurementMethodsPage() {
                 title="Simulator Jadwal Tahapan (Preview Schedule)"
                 right={
                   <div className="flex items-center gap-1.5">
-                    <input
-                      type="date"
+                    <DatePicker
+                      size="sm"
                       value={previewStartDate}
-                      onChange={(e) => setPreviewStartDate(e.target.value)}
-                      className="h-7 rounded-lg border border-border bg-white px-2 font-mono text-xs text-foreground"
+                      onChange={setPreviewStartDate}
+                      aria-label="Tanggal mulai simulasi"
+                      className="w-[148px]"
                     />
                     <Button
                       variant="primary"

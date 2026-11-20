@@ -289,13 +289,6 @@ export function SignInPage() {
               </Button>
             </form>
           </Panel>
-
-          <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
-            <span>Belum aktivasi akun baru?</span>
-            <Link to="/activate" className="font-medium text-foreground hover:underline">
-              Aktivasi Akun
-            </Link>
-          </div>
         </div>
 
         <footer className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">

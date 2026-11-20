@@ -9,6 +9,7 @@ import {
   Button,
   ConfirmDialog,
   DataState,
+  DatePicker,
   FieldLabel,
   FieldSelect,
   FormDialog,
@@ -543,15 +544,13 @@ export function MasterResourcePage({ resource }: { resource: MasterResourceKey }
 
         {config.hasHolidayDate && (
           <FieldLabel label="Tanggal Hari Libur" required error={errors.holidayDate}>
-            <input
-              type="date"
-              aria-invalid={Boolean(errors.holidayDate)}
+            <DatePicker
+              error={errors.holidayDate}
               value={form.holidayDate ?? ''}
-              onChange={(e) => {
-                setForm({ ...form, holidayDate: e.target.value })
+              onChange={(val) => {
+                setForm({ ...form, holidayDate: val })
                 clearError('holidayDate')
               }}
-              className={`${fieldBase} font-mono`}
             />
           </FieldLabel>
         )}

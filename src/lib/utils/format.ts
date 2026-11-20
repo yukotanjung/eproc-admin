@@ -22,6 +22,15 @@ export function formatNumber(value: number | string | null | undefined): string 
   return numFormatter.format(numeric)
 }
 
+export function formatGroupedNumber(value: number): string {
+  return value > 0 ? formatNumber(Math.trunc(value)) : ''
+}
+
+export function parseDigits(raw: string): number {
+  const digits = raw.replace(/\D/g, '')
+  return digits ? Number(digits) : 0
+}
+
 export function formatDate(value: string | null | undefined, withTime = false): string {
   if (!value) return '-'
   const date = new Date(value)

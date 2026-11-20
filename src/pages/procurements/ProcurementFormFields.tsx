@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router'
 import { FileSpreadsheet, Layers, Wallet } from 'lucide-react'
 import {
   Button,
+  DatePicker,
   FieldLabel,
   FieldSelect,
   Frame,
@@ -13,20 +14,11 @@ import {
 } from '~/components/ui'
 import type { ProcurementPayload } from '~/integrations/api'
 import type { FormErrors } from '~/lib/hooks/useFormValidation'
-import { formatNumber } from '~/lib/utils/format'
+import { formatGroupedNumber, parseDigits } from '~/lib/utils/format'
 
 interface OptionItem {
   id: number
   name: string
-}
-
-function formatGroupedNumber(value: number): string {
-  return value > 0 ? formatNumber(Math.trunc(value)) : ''
-}
-
-function parseDigits(raw: string): number {
-  const digits = raw.replace(/\D/g, '')
-  return digits ? Number(digits) : 0
 }
 
 export function ProcurementFormFields({
@@ -97,15 +89,13 @@ export function ProcurementFormFields({
             </FieldLabel>
 
             <FieldLabel label="Tanggal Rencana" required error={errors.plannedDate}>
-              <input
-                type="date"
-                aria-invalid={Boolean(errors.plannedDate)}
+              <DatePicker
+                error={errors.plannedDate}
                 value={form.plannedDate}
-                onChange={(e) => {
-                  onChange({ ...form, plannedDate: e.target.value })
+                onChange={(val) => {
+                  onChange({ ...form, plannedDate: val })
                   clearError('plannedDate')
                 }}
-                className={`${fieldBase} font-mono`}
               />
             </FieldLabel>
           </div>

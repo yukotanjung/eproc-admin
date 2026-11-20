@@ -1,4 +1,5 @@
 export * from './primitives'
 export * from './inputs'
+export * from './date-picker'
 export * from './overlays'
 export * from './data-table'

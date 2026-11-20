@@ -152,9 +152,12 @@ export interface ProcurementHpsItem {
   unit?: MasterItem | null
   quantity: number
   unitPrice: number
+  baseSubtotal?: number
   useTax: boolean
-  subtotalBeforeTax?: number
+  taxRate?: number
   taxAmount?: number
+  subtotal?: number
+  subtotalBeforeTax?: number
   totalPrice?: number
   createdAt?: string
   updatedAt?: string
